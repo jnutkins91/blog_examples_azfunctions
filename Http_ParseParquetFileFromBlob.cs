@@ -23,43 +23,48 @@ namespace Ndxc.Blog
         {
             log.LogInformation("C# HTTP trigger function processed a request.");
 
+            // Connect to Blob Storage using a connection string
+            // Assumes there is a container called 'files'
             string connectionString = "<CONNECTION STRING>";
             BlobContainerClient container = new BlobContainerClient(connectionString, "files");
 
+            // Initialise our list of objects
             List<UserData> userDataList = new List<UserData>();
 
+            // Loop through each of the files in the container
             foreach (var file in container.GetBlobs())
             {
 
+                // Initialise a BlobClient so we can worj with the named file
                 var blockBlob = container.GetBlobClient(file.Name);
 
+                // Initialise a unique temporary path to hold the Parquet file
                 var tempPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
 
+                // Download the file to the temporary path
                 using (var fileStream = File.OpenWrite(tempPath + blockBlob.Name))
                 {
                     blockBlob.DownloadTo(fileStream);
                 }
 
-                // open file stream
+                // Open file stream
                 using (Stream fileStream = File.OpenRead(tempPath + blockBlob.Name))
                 {
-                    // open parquet file reader
+                    // Open parquet file reader
                     using (var parquetReader = new ParquetReader(fileStream))
                     {
 
-                        // get file schema (available straight after opening parquet reader)
-                        // however, get only data fields as only they contain data values
-                        DataField[] dataFields = parquetReader.Schema.GetDataFields();
-
-                        // enumerate through row groups in this file
+                        // Enumerate through row groups in this file
                         for (int i = 0; i < parquetReader.RowGroupCount; i++)
                         {
-                            // create row group reader
+                            // Create row group reader
                             using (ParquetRowGroupReader groupReader = parquetReader.OpenRowGroupReader(i))
                             {
 
+                                // Deserialize the rows into an array
                                 UserData[] v1structures = ParquetConvert.Deserialize<UserData>(fileStream, i);
 
+                                // Add each item of our array to our overall list
                                 foreach (var row in v1structures)
                                 {
                                     userDataList.Add(row);
@@ -71,15 +76,18 @@ namespace Ndxc.Blog
 
             }
 
+            // Check we have rows
             if (userDataList.Count > 0)
             {
 
+                // Return the list as a JSON array
                 string json = JsonConvert.SerializeObject(userDataList.ToArray(), Formatting.Indented);
 
                 return new OkObjectResult(json);
             }
             else
             {
+
                 return new BadRequestResult();
             }        
         }
